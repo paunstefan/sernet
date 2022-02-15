@@ -1,0 +1,21 @@
+[package]
+name = "sernet"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "sernet"
+path = "src/main.rs"
+
+[lib]
+name = "sernet_lib"
+path = "src/lib/lib.rs"
+
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tun-tap = { git = "https://github.com/vorner/tuntap", default-features = false }
+etherparse = "0.10"
+#serialport = { version = "4.0", default-features = false }
+serial = "0.4"
