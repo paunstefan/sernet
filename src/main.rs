@@ -1,7 +1,6 @@
-use serial::prelude::*;
-use std::{io::Write, sync::Arc, time::Duration};
-
 use sernet_lib::*;
+
+mod serial;
 
 fn main() {
     // // Create the tun interface.
@@ -27,15 +26,13 @@ fn main() {
     //     println!("Packet: {:?}", &buffer[4..size]);
     // }
     println!("Started program");
-    let mut port = serial::open("/dev/ttyS0").unwrap();
-    let _ = port.reconfigure(&|settings| settings.set_baud_rate(serial::Baud115200));
-    // let mut port = serialport::new("/dev/ttyS0", 9600)
-    //     .timeout(Duration::from_millis(10))
-    //     .open()
-    //     .expect("Failed to open port");
+
+    let (read, write) = serial::new_serial("/dev/ttyS0", 9600);
+
+    let intf = IpTun::new("tun0");
+
+    intf.start_forwarding(read, write);
 
     // let output = "This is a test. This is only a test.\n".as_bytes();
     // let _ = port.write(output).expect("Write failed!");
-
-    let tun = IpTun::new("tun0".to_string(), port);
 }

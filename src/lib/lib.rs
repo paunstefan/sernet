@@ -1,43 +1,35 @@
+use std::io;
 use std::{
     io::{Read, Write},
-    sync::{Arc, Mutex},
+    sync::Arc,
     thread,
 };
 
 use tun_tap::{Iface, Mode};
 
 #[derive(Debug, Clone)]
-pub struct IpTun<S>
-where
-    S: Read + Write + Clone + Send + Sync,
-{
+pub struct IpTun {
     ifname: String,
     iface: Arc<Iface>,
-    ext_port: Arc<Mutex<S>>,
 }
 
-impl<S> IpTun<S>
-where
-    S: Read + Write + Clone + Send + Sync,
-    S: 'static,
-{
-    pub fn new(ifname: String, port: S) -> Self {
-        let iface = Iface::new(&ifname, Mode::Tun).unwrap();
+impl IpTun {
+    pub fn new(ifname: &str) -> Self {
+        let iface = Iface::new(ifname, Mode::Tun).unwrap();
 
         IpTun {
-            ifname,
+            ifname: ifname.to_string(),
             iface: Arc::new(iface),
-            ext_port: Arc::new(Mutex::new(port)),
         }
     }
 
-    pub fn start_forwarding(&self) {
+    pub fn start_forwarding(&self, ser_reader: impl Read + Send + 'static, ser_writer: impl Write) {
         let reader = (*self).clone();
-        thread::spawn(move || reader.fwd_ser_ip());
-        self.fwd_ip_ser();
+        thread::spawn(move || reader.fwd_ser_ip(ser_reader));
+        self.fwd_ip_ser(ser_writer);
     }
 
-    fn fwd_ip_ser(&self) {
+    fn fwd_ip_ser(&self, mut writer: impl Write) {
         let mut buffer = vec![0; 9100];
         loop {
             let size = self.iface.recv(&mut buffer).unwrap();
@@ -49,30 +41,60 @@ where
             }
             println!(
                 "Packet received from TUN:({} bytes) {:?}",
-                &buffer[4..size].len(),
-                &buffer[4..size]
+                &buffer[..size].len(),
+                &buffer[..size]
             );
 
-            let mut port = self.ext_port.lock().unwrap();
-            let _written = port.write(&buffer[4..size]).unwrap();
+            send_serial_frame(&buffer[..size], &mut writer);
         }
     }
 
-    fn fwd_ser_ip(&self) {
+    fn fwd_ser_ip(&self, mut reader: impl Read) {
         let mut buffer = vec![0; 9100];
         loop {
-            {
-                let mut port = self.ext_port.lock().unwrap();
-                let _size = port.read(&mut buffer).unwrap();
-            }
+            let size = read_ip_packet(&mut buffer, &mut reader);
 
             println!(
                 "Packet received from serial port:({} bytes) {:?}",
-                &buffer[..].len(),
-                &buffer[..]
+                &buffer[..size].len(),
+                &buffer[..size]
             );
 
-            let _written = self.iface.send(&buffer[..]).unwrap();
+            let _written = self.iface.send(&buffer[..size]).unwrap();
+            println!("Written if: {}", _written);
+        }
+    }
+}
+
+fn send_serial_frame(buffer: &[u8], writer: &mut impl Write) {
+    let size = buffer.len();
+    assert!(size < u16::MAX as usize);
+    let size = (size as u16).to_be_bytes();
+
+    let mut frame = size.to_vec();
+    frame.extend_from_slice(buffer);
+
+    writer.write_all(&frame).unwrap()
+}
+
+fn read_ip_packet(buffer: &mut [u8], reader: &mut impl Read) -> usize {
+    let mut size_buf = [0u8; 2];
+
+    read_exact_no_timeout(&mut size_buf, reader).unwrap();
+    let size = u16::from_be_bytes(size_buf) as usize;
+
+    read_exact_no_timeout(&mut buffer[0..size], reader).unwrap();
+
+    size
+}
+
+/// Workaround as the serial implementation has no infinite blocking mode
+fn read_exact_no_timeout(buf: &mut [u8], reader: &mut impl Read) -> io::Result<()> {
+    loop {
+        match reader.read_exact(buf) {
+            Ok(_) => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::TimedOut => continue,
+            Err(e) => return Err(e),
         }
     }
 }
