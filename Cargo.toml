@@ -1,14 +1,18 @@
 [package]
 name = "sernet"
 version = "0.1.0"
+authors = ["Paun Stefan <paunstefan@protonmail.com>"]
 edition = "2021"
+license = "MIT"
+readme = "README.md"
+description = "Create a network interface over a serial port"
 
 [lib]
 name = "sernet"
 path = "src/lib.rs"
 
 [[example]]
-name = "serialport"
+name = "serialtun"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -17,3 +21,4 @@ tun-tap = { git = "https://github.com/vorner/tuntap", default-features = false }
 
 [dev-dependencies]
 serialport = { version = "4.0", default-features = false }
+structopt = "0.3"
