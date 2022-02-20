@@ -8,6 +8,8 @@ It can be useful for creating a network interface over a standard serial link be
 
 The library works by first initializing the TUN interface, then giving it the 2 ends of a serial connection (that implement Read and Write). The same port can be cloned and used as both ends.
 
+The `tun_tap` library works only on Linux, `sernet` is also incompatible with other OSes.
+
 ## Example
 
 In the `examples` directory there is a `serialtun.rs` file that implements a simple usecase.

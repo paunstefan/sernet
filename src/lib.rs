@@ -11,6 +11,8 @@ mod errors;
 
 use errors::SernetError;
 
+const IP_MAX_LEN: usize = 65535;
+
 #[derive(Debug, PartialEq)]
 enum EtherType {
     IpV4,
@@ -57,7 +59,7 @@ impl IpTun {
 
     /// Loop that forwards packets from IP tun to serial
     fn fwd_ip_ser(&self, mut writer: impl Write) {
-        let mut buffer = vec![0; 9100];
+        let mut buffer = vec![0; IP_MAX_LEN];
         loop {
             let size = match self.iface.recv(&mut buffer) {
                 Ok(size) => size,
@@ -67,6 +69,7 @@ impl IpTun {
                 }
             };
 
+            // TUN packet flags and protocol size
             if size < 4 {
                 continue;
             }
@@ -85,7 +88,7 @@ impl IpTun {
 
     /// Loop that forwards packets from serial to IP tun
     fn fwd_ser_ip(&self, mut reader: impl Read) {
-        let mut buffer = vec![0; 9100];
+        let mut buffer = vec![0; IP_MAX_LEN];
         loop {
             let size = match read_ip_packet(&mut buffer, &mut reader) {
                 Ok(size) => size,
@@ -119,13 +122,13 @@ impl IpTun {
 /// Sends IP packet over serial. Prepends packet size.
 fn send_serial_frame(buffer: &[u8], writer: &mut impl Write) -> Result<(), SernetError> {
     let size = buffer.len();
-    assert!(size < u16::MAX as usize);
-    let size = (size as u16).to_be_bytes();
+    if size > u16::MAX as usize {
+        return Err(SernetError::OtherError);
+    }
+    let size_buf = (size as u16).to_be_bytes();
 
-    let mut frame = size.to_vec();
-    frame.extend_from_slice(buffer);
-
-    writer.write_all(&frame)?;
+    writer.write_all(&size_buf)?;
+    writer.write_all(buffer)?;
 
     Ok(())
 }
@@ -145,9 +148,17 @@ fn read_ip_packet(buffer: &mut [u8], reader: &mut impl Read) -> Result<usize, Se
 /// read_exact but ignores TimedOut errors
 /// Workaround as the serial library doesn't yet support unlimited blocking
 fn read_exact_no_timeout(buf: &mut [u8], reader: &mut impl Read) -> io::Result<()> {
+    let to_read = buf.len();
+    let mut read = 0;
+
     loop {
-        match reader.read_exact(buf) {
-            Ok(_) => return Ok(()),
+        match reader.read(&mut buf[read..to_read]) {
+            Ok(size) => {
+                read += size;
+                if read == to_read {
+                    return Ok(());
+                }
+            }
             Err(e) if e.kind() == std::io::ErrorKind::TimedOut => continue,
             Err(e) => return Err(e),
         }
