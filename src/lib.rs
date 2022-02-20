@@ -7,6 +7,9 @@ use std::{
 
 use tun_tap::{Iface, Mode};
 
+// TODO: error handling
+
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct IpTun {
     ifname: String,
